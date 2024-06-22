@@ -62,6 +62,8 @@ func (m *smartRoundTripper) Clone() http.RoundTripper {
 func (m *smartRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header["X-Forwarded-For"] = []string{"1.2.3.4"}
 
+	req.Header.Set("X-Forwarded-Proto", req.Header.Get("Cloudfront-Forwarded-Proto"))
+
 	// If we have a connection upgrade, we don't use HTTP/2
 	if httpguts.HeaderValuesContainsToken(req.Header["Connection"], "Upgrade") {
 		return m.http.RoundTrip(req)
