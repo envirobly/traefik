@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"time"
+	"strings"
 
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
 	"golang.org/x/net/http/httpguts"
@@ -60,9 +61,15 @@ func (m *smartRoundTripper) Clone() http.RoundTripper {
 }
 
 func (m *smartRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header["X-Forwarded-For"] = []string{"1.2.3.4"}
+	if cfViewerAddress := req.Header.Get("Cloudfront-Viewer-Address"); cfViewerAddress != "" {
+		clientIp := ipAddressWithoutPort(cfViewerAddress)
+		req.Header.Set("X-Forwarded-For", clientIp)
+		req.Header.Set("X-Real-Ip", clientIp)
+	}
 
-	req.Header.Set("X-Forwarded-Proto", req.Header.Get("Cloudfront-Forwarded-Proto"))
+	if cfForwardedProto := req.Header.Get("Cloudfront-Forwarded-Proto"); cfForwardedProto != "" {
+		req.Header.Set("X-Forwarded-Proto", cfForwardedProto)
+	}
 
 	// If we have a connection upgrade, we don't use HTTP/2
 	if httpguts.HeaderValuesContainsToken(req.Header["Connection"], "Upgrade") {
@@ -70,4 +77,28 @@ func (m *smartRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 
 	return m.http2.RoundTrip(req)
+}
+
+func ipAddressWithoutPort(input string) string {
+	parts := strings.Split(input, ":")
+
+	if len(parts) < 2 {
+		return input
+	}
+
+	// IPv6 address contains more than one ":"
+	isIPv6 := len(parts) > 2
+
+	// Remove the last part (port)
+	addressParts := parts[:len(parts)-1]
+
+	// Reassemble
+	var address string
+	if isIPv6 {
+		address = strings.Join(addressParts, ":")
+	} else {
+		address = addressParts[0]
+	}
+
+	return address
 }
